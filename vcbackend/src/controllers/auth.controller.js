@@ -11,7 +11,7 @@ export async function signup(req, res) {
             });
         }
 
-        if(password.lenth < 6) {
+        if(password.length < 6) {
             return res.status(400).json({
                 message: "Password must be at least 6 characters"
             });
@@ -35,12 +35,15 @@ export async function signup(req, res) {
         const idx = Math.floor(Math.random() * 100) + 1;
         const randomAvatar = `https://avatar.iran.liara.run/public/${idx}.png`;
 
-        const newUser = newUser.create({
+        const newUser = await User.create({
             email,
             fullName,
             password,
             profilePic: randomAvatar,
-        })
+        });
+
+        // todo: create the user in steam as well
+        
 
         const token = jwt.sign(
             { userId: newUser._id },
@@ -52,7 +55,7 @@ export async function signup(req, res) {
             maxAge: 7 * 24 * 60 * 1000,
             httpOnly: true, // note: prevent XSS attacks
             sameSite: "strict", // note: prevent CSRF requests
-            secure:process.env.NODE_ENV==="production"
+            secure:process.env.NODE_ENV === "production"
           });
           res.status(201).json({
             success: true,
@@ -60,14 +63,60 @@ export async function signup(req, res) {
           })
           
     } catch (error) {
-        
+        console.log("Error in signup controller", error);
+        res.status(500).json({
+            message: "Internal Server Error"
+        })
     }
 }
 
 export async function login(req, res) {
-    res.send("Login Route")
+    try {
+        const {email, password } = req.body;
+
+        if(!email || !password) {
+            return res.status(400).json({
+                message: "All fields are required"
+            })
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ message: "Invalid email or password"});
+
+        const isPasswordCorrect = await user.matchPassword(password)
+
+        if(!isPasswordCorrect) return res.status(401).json({ 
+            message: "Invalid email or password"
+        })
+
+        const token = jwt.sign(
+            { userId: user._id },
+            process.env.JWT_SECRET_KEY,
+            { expiresIn: "7d" }
+          );
+
+          res.cookie("token", token, {
+            maxAge: 7 * 24 * 60 * 1000,
+            httpOnly: true, // note: prevent XSS attacks
+            sameSite: "strict", // note: prevent CSRF requests
+            secure:process.env.NODE_ENV === "production"
+          });
+
+          res.status(200).json({
+            success: true, user
+          })
+    } catch (error) {
+        console.log("Error in login controller", error.message);
+        res.status(500).json({ 
+            message: "Internal Server Error"
+        })
+    }
 }
 
 export async function logout(req, res) {
-    res.send("Logout Route")
+    res.clearCookie("token")
+    res.status(200).json({
+        success: true,
+        message: "Logout successful"
+    });
 } 
